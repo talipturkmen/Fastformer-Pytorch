@@ -5,7 +5,6 @@
 [![Upload Python Package](https://github.com/talipturkmen/Fast-Transformer-Pytorch/actions/workflows/python-publish.yml/badge.svg)](https://github.com/talipturkmen/Fast-Transformer-Pytorch/actions/workflows/python-publish.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5406025.svg)](https://doi.org/10.5281/zenodo.5406025)
 ![GitHub License](https://img.shields.io/github/license/talipturkmen/Fast-Transformer-Pytorch)
 [![GitHub stars](https://img.shields.io/github/stars/talipturkmen/Fast-Transformer-Pytorch?style=social)](https://github.com/talipturkmen/Fast-Transformer-Pytorch/stargazers)
 
