@@ -1,0 +1,2 @@
+include LICENSE
+recursive-include fast_transformer_torch *.py
