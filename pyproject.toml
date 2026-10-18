@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fast-transformer-torch"
+dynamic = ["version"]
+description = "PyTorch implementation of Fastformer: Additive Attention Can Be All You Need"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Talip Turkmen", email = "talipturkmentr@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = ["torch>=2.0", "einops>=0.6"]
+keywords = ["transformer", "attention", "fastformer", "pytorch", "deep-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/talipturkmen/Fastformer-Pytorch"
+Issues = "https://github.com/talipturkmen/Fastformer-Pytorch/issues"
+Paper = "https://arxiv.org/abs/2108.09084"
+
+[tool.hatch.version]
+path = "fast_transformer_torch/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["fast_transformer_torch", "tests", "README.md", "LICENSE"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,56 +1,104 @@
-# Fast Transformer 
+# Fastformer — PyTorch
 
-![PyPI](https://img.shields.io/pypi/v/fast-transformer-torch)
-[![Lint Code Base](https://github.com/talipturkmen/Fast-Transformer-Pytorch/actions/workflows/linter.yml/badge.svg)](https://github.com/talipturkmen/Fast-Transformer-Pytorch/actions/workflows/linter.yml)
-[![Upload Python Package](https://github.com/talipturkmen/Fast-Transformer-Pytorch/actions/workflows/python-publish.yml/badge.svg)](https://github.com/talipturkmen/Fast-Transformer-Pytorch/actions/workflows/python-publish.yml)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Tests](https://github.com/talipturkmen/Fastformer-Pytorch/actions/workflows/tests.yml/badge.svg)](https://github.com/talipturkmen/Fastformer-Pytorch/actions/workflows/tests.yml)
+[![Lint](https://github.com/talipturkmen/Fastformer-Pytorch/actions/workflows/lint.yml/badge.svg)](https://github.com/talipturkmen/Fastformer-Pytorch/actions/workflows/lint.yml)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
+[![PyTorch](https://img.shields.io/badge/pytorch-%E2%89%A52.0-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org)
+[![License](https://img.shields.io/github/license/talipturkmen/Fastformer-Pytorch)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![arXiv](https://img.shields.io/badge/arXiv-2108.09084-b31b1b.svg)](https://arxiv.org/abs/2108.09084)
 
-![GitHub License](https://img.shields.io/github/license/talipturkmen/Fast-Transformer-Pytorch)
-[![GitHub stars](https://img.shields.io/github/stars/talipturkmen/Fast-Transformer-Pytorch?style=social)](https://github.com/talipturkmen/Fast-Transformer-Pytorch/stargazers)
+A PyTorch implementation of [Fastformer: Additive Attention Can Be All You Need](https://arxiv.org/abs/2108.09084) (Wu et al., 2021).
 
-This repo implements [Fastformer: Additive Attention Can Be All You Need](https://arxiv.org/abs/2108.09084) by Wu et al. in 
-Pytorch based on the implementation of [Rishit Dagli](https://github.com/Rishit-dagli/Fast-Transformer).
-**Fast Transformer** is a Transformer variant based on additive attention that can handle long sequences 
-efficiently with linear complexity. Fastformer is much more efficient than many existing Transformer models and can 
-meanwhile achieve comparable or even better long text modeling performance.
+Fastformer replaces pairwise self-attention with **additive attention**. The model pools
+the queries into one global query vector. This vector modulates each key. Then the model
+pools the modulated keys into one global key, which modulates each value. Each step is
+linear in sequence length, so time and memory are **O(n)**, not O(n²).
 
-![](https://github.com/talipturkmen/Fast-Transformer-Pytorch/blob/main/media/architecture.png)
+![Fastformer architecture](media/architecture.png)
 
 ## Installation
 
-Run the following to install:
-
 ```sh
-pip install fast-transformer-torch
+pip install git+https://github.com/talipturkmen/Fastformer-Pytorch.git
 ```
 
-## Developing fast-transformer
-
-To install `fast-transformer-torch`, along with tools you need to develop and test, run the following in your virtualenv:
-
-```sh
-git clone https://github.com/talipturkmen/Fast-Transformer-Pytorch.git
-# or clone your own fork
-
-cd fast-transformer-torch
-pip install -e .[dev]
-```
+Requires Python ≥ 3.10 and PyTorch ≥ 2.0.
 
 ## Usage
 
 ```python
-from fast_transformer_torch import FastTransformer
 import torch
+from fast_transformer_torch import FastTransformer
 
-mask = torch.ones([16, 4096], dtype=torch.bool)
-model = FastTransformer(num_tokens = 20000,
-                        dim = 512,
-                        depth = 2,
-                        max_seq_len = 4096,
-                        absolute_pos_emb = True, # Absolute positional embeddings
-                        mask = mask
-                        )
+model = FastTransformer(
+    num_tokens=20000,
+    dim=512,
+    depth=2,
+    max_seq_len=4096,
+    absolute_pos_emb=False,  # False: rotary embeddings, True: learned absolute embeddings
+)
+
 x = torch.randint(0, 20000, (16, 4096))
+mask = torch.ones(16, 4096, dtype=torch.bool)  # True = real token, False = padding
 
-logits = model(x) # (1, 4096, 20000)
+logits = model(x, mask=mask)  # (16, 4096, 20000)
 ```
+
+`mask` is optional. Padded positions do not contribute to the global query or the global key.
+
+You can also use the attention layer alone:
+
+```python
+from fast_transformer_torch import FastAttention
+
+attn = FastAttention(dim=512, heads=8, dim_head=64)
+out = attn(torch.randn(16, 4096, 512), mask=mask)  # (16, 4096, 512)
+```
+
+### Options
+
+| Argument | Default | Description |
+| --- | --- | --- |
+| `num_tokens` | — | Vocabulary size |
+| `dim` | — | Model width |
+| `depth` | — | Number of attention + feed-forward blocks |
+| `max_seq_len` | — | Longest accepted sequence |
+| `heads` | `8` | Attention heads |
+| `dim_head` | `64` | Width of each head (must be even for rotary embeddings) |
+| `ff_mult` | `4` | Feed-forward hidden width multiplier |
+| `absolute_pos_emb` | `False` | Use learned absolute position embeddings instead of rotary |
+| `share_attn_logit_weights` | `True` | Share the query/key attention-logit projections across layers, as in the paper |
+
+## Development
+
+```sh
+git clone https://github.com/talipturkmen/Fastformer-Pytorch.git
+cd Fastformer-Pytorch
+pip install -e ".[dev]"
+
+pytest
+ruff check . && ruff format --check .
+```
+
+## Acknowledgements
+
+Based on the TensorFlow implementation by [Rishit Dagli](https://github.com/Rishit-dagli/Fast-Transformer)
+and [lucidrains' PyTorch implementation](https://github.com/lucidrains/fast-transformer-pytorch).
+
+## Citation
+
+```bibtex
+@misc{wu2021fastformer,
+    title         = {Fastformer: Additive Attention Can Be All You Need},
+    author        = {Chuhan Wu and Fangzhao Wu and Tao Qi and Yongfeng Huang and Xing Xie},
+    year          = {2021},
+    eprint        = {2108.09084},
+    archivePrefix = {arXiv},
+    primaryClass  = {cs.CL}
+}
+```
+
+## License
+
+[Apache 2.0](LICENSE)
