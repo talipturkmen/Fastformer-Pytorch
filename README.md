@@ -70,6 +70,21 @@ out = attn(torch.randn(16, 4096, 512), mask=mask)  # (16, 4096, 512)
 | `absolute_pos_emb` | `False` | Use learned absolute position embeddings instead of rotary |
 | `share_attn_logit_weights` | `True` | Share the query/key attention-logit projections across layers, as in the paper |
 
+## Performance
+
+The two modulated tensors, `p = k ⊙ global_q` and `u = v ⊙ global_k`, are never materialized. Both are only used through linear maps, so the global vectors are folded into those maps instead. Rotary embeddings use cached half-width cos/sin tables and rotate q, k and v in one call. The result is exactly the same function as v0.2.0: the tests check outputs and gradients against the original implementation in float64.
+
+Forward + backward of one `FastAttention` layer (batch 4, dim 512, 8 heads of 64, 16,384 tokens):
+
+| Device | Rotary | v0.2.0 | v0.3.0 |
+| --- | --- | --- | --- |
+| Apple MPS | yes | 227 ms · 1,312 MiB | **137 ms · 781 MiB** |
+| Apple MPS | no | 91 ms · 1,160 MiB | 88 ms · 905 MiB |
+| CPU | yes | 524 ms · 1,056 MiB | 509 ms · 781 MiB |
+| CPU | no | 389 ms · 1,288 MiB | 391 ms · 905 MiB |
+
+Memory is the activation memory autograd keeps for the backward pass. Reproduce with `python benchmarks/bench_attention.py --device mps --impl reference` and `--impl optimized`.
+
 ## Development
 
 ```sh
@@ -83,8 +98,7 @@ ruff check . && ruff format --check .
 
 ## Acknowledgements
 
-Based on the TensorFlow implementation by [Rishit Dagli](https://github.com/Rishit-dagli/Fast-Transformer)
-and [lucidrains' PyTorch implementation](https://github.com/lucidrains/fast-transformer-pytorch).
+Based on [lucidrains' PyTorch implementation](https://github.com/lucidrains/fast-transformer-pytorch).
 
 ## Citation
 

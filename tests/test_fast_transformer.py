@@ -117,3 +117,39 @@ def test_rotary_preserves_relative_inner_products():
     # <R_m q, R_n k> depends only on m - n
     torch.testing.assert_close(q_rot[3] @ k_rot[1], q_rot[5] @ k_rot[3])
     torch.testing.assert_close(q_rot[0].norm(), q[0].norm())
+
+
+@pytest.mark.parametrize("rotary", [False, True])
+@pytest.mark.parametrize("with_mask", [False, True])
+def test_optimized_attention_matches_reference(rotary, with_mask):
+    from reference_attention import reference_forward
+
+    torch.manual_seed(0)
+    attn = FastAttention(
+        dim=32, heads=4, dim_head=8, rotary_emb=RotaryEmbedding(8) if rotary else None
+    )
+    x = torch.randn(3, 50, 32, dtype=torch.float64)
+    attn = attn.double()
+    mask = None
+    if with_mask:
+        mask = torch.ones(3, 50, dtype=torch.bool)
+        mask[1, 30:] = False
+    x_ref = x.clone().requires_grad_(True)
+    x_opt = x.clone().requires_grad_(True)
+    out_ref = reference_forward(attn, x_ref, mask)
+    out_opt = attn(x_opt, mask=mask)
+    torch.testing.assert_close(out_opt, out_ref)
+
+    grad = torch.randn_like(out_ref)
+    ref_grads = torch.autograd.grad(out_ref, [x_ref, *attn.parameters()], grad)
+    opt_grads = torch.autograd.grad(out_opt, [x_opt, *attn.parameters()], grad)
+    for g_opt, g_ref in zip(opt_grads, ref_grads, strict=True):
+        torch.testing.assert_close(g_opt, g_ref)
+
+
+def test_rotary_cache_handles_growing_and_shrinking_lengths():
+    rotary = RotaryEmbedding(8)
+    short, long = torch.randn(2, 5, 8), torch.randn(2, 40, 8)
+    expected_short = rotary(short)
+    rotary(long)
+    torch.testing.assert_close(rotary(short), expected_short)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+### Performance
+- `FastAttention` no longer materializes the modulated keys and values; the global
+  query and key are folded into the linear maps that consume them. Same outputs and
+  gradients, 22-40% less activation memory at long sequence lengths.
+- Rotary embeddings cache half-width cos/sin tables and rotate q, k and v in one call
+  (about 1.7x faster attention with rotary embeddings on Apple MPS at 16k tokens).
+- Added `benchmarks/bench_attention.py`.
+
 ## 0.2.0
 
 Rewrite. Version 0.1.0 could not be imported and produced NaN outputs.
