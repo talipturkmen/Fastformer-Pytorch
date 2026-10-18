@@ -8,6 +8,9 @@
   gradients, 22-40% less activation memory at long sequence lengths.
 - Rotary embeddings cache half-width cos/sin tables and rotate q, k and v in one call
   (about 1.7x faster attention with rotary embeddings on Apple MPS at 16k tokens).
+- Both pooling steps run through `F.scaled_dot_product_attention` as single-query
+  attention (fused kernels on CUDA); `FastAttention(use_sdpa=False)` keeps the einsum path.
+  Up to ~10% faster on CPU at long sequence lengths, unchanged on Apple MPS.
 - Added `benchmarks/bench_attention.py`.
 
 ## 0.2.0

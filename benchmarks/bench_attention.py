@@ -1,6 +1,6 @@
 """Time and peak memory of FastAttention forward+backward.
 
-python benchmarks/bench_attention.py [--device cpu|cuda|mps] [--impl optimized|reference]
+python benchmarks/bench_attention.py [--device cpu|cuda|mps] [--impl sdpa|einsum|reference]
 """
 
 import argparse
@@ -36,7 +36,7 @@ def run(impl, device, batch, seq_len, dim, heads, dim_head, rotary, steps):
         device
     )
     x = torch.randn(batch, seq_len, dim, device=device, requires_grad=True)
-    fn = (lambda: attn(x)) if impl == "optimized" else (lambda: reference_forward(attn, x))
+    fn = (lambda: reference_forward(attn, x)) if impl == "reference" else (lambda: attn(x))
     for _ in range(2):
         fn().sum().backward()
     sync = {"cuda": torch.cuda.synchronize, "mps": torch.mps.synchronize}.get(device, lambda: None)
@@ -52,7 +52,7 @@ def run(impl, device, batch, seq_len, dim, heads, dim_head, rotary, steps):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--impl", default="optimized", choices=["optimized", "reference"])
+    parser.add_argument("--impl", default="sdpa", choices=["sdpa", "einsum", "reference"])
     parser.add_argument("--steps", type=int, default=10)
     args = parser.parse_args()
     for rotary in (False, True):

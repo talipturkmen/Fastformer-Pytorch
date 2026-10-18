@@ -153,3 +153,18 @@ def test_rotary_cache_handles_growing_and_shrinking_lengths():
     expected_short = rotary(short)
     rotary(long)
     torch.testing.assert_close(rotary(short), expected_short)
+
+
+@pytest.mark.parametrize("rotary", [False, True])
+def test_sdpa_and_einsum_paths_agree(rotary):
+    torch.manual_seed(0)
+    attn = FastAttention(
+        dim=32, heads=4, dim_head=8, rotary_emb=RotaryEmbedding(8) if rotary else None
+    ).double()
+    x = torch.randn(2, 40, 32, dtype=torch.float64)
+    mask = torch.ones(2, 40, dtype=torch.bool)
+    mask[0, 25:] = False
+    attn.use_sdpa = True
+    out_sdpa = attn(x, mask=mask)
+    attn.use_sdpa = False
+    torch.testing.assert_close(out_sdpa, attn(x, mask=mask))

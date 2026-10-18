@@ -72,7 +72,7 @@ out = attn(torch.randn(16, 4096, 512), mask=mask)  # (16, 4096, 512)
 
 ## Performance
 
-The two modulated tensors, `p = k ⊙ global_q` and `u = v ⊙ global_k`, are never materialized. Both are only used through linear maps, so the global vectors are folded into those maps instead. Rotary embeddings use cached half-width cos/sin tables and rotate q, k and v in one call. The result is exactly the same function as v0.2.0: the tests check outputs and gradients against the original implementation in float64.
+The two modulated tensors, `p = k ⊙ global_q` and `u = v ⊙ global_k`, are never materialized. Both are only used through linear maps, so the global vectors are folded into those maps instead. Rotary embeddings use cached half-width cos/sin tables and rotate q, k and v in one call. Both additive-attention pooling steps are single-query attention, so they run through `torch.nn.functional.scaled_dot_product_attention`. On CUDA that dispatches to PyTorch's fused kernels; pass `use_sdpa=False` to `FastAttention` to use plain einsum instead. The result is exactly the same function as v0.2.0: the tests check outputs and gradients against the original implementation in float64.
 
 Forward + backward of one `FastAttention` layer (batch 4, dim 512, 8 heads of 64, 16,384 tokens):
 
@@ -83,7 +83,7 @@ Forward + backward of one `FastAttention` layer (batch 4, dim 512, 8 heads of 64
 | CPU | yes | 524 ms · 1,056 MiB | 509 ms · 781 MiB |
 | CPU | no | 389 ms · 1,288 MiB | 391 ms · 905 MiB |
 
-Memory is the activation memory autograd keeps for the backward pass. Reproduce with `python benchmarks/bench_attention.py --device mps --impl reference` and `--impl optimized`.
+Memory is the activation memory autograd keeps for the backward pass. Reproduce with `python benchmarks/bench_attention.py --device mps --impl reference` and `--impl sdpa` (or `--impl einsum`).
 
 ## Development
 

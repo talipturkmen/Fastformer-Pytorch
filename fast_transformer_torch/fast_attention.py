@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from einops import rearrange
 
 
@@ -57,8 +58,10 @@ class FastAttention(nn.Module):
         heads: int = 8,
         dim_head: int = 64,
         rotary_emb: RotaryEmbedding | None = None,
+        use_sdpa: bool = True,
     ):
         super().__init__()
+        self.use_sdpa = use_sdpa
         inner_dim = heads * dim_head
         self.heads = heads
         self.scale = dim_head**-0.5
@@ -91,17 +94,9 @@ class FastAttention(nn.Module):
             self.rotary_emb(qkv) if self.rotary_emb is not None else qkv
         ).unbind(0)
 
-        if mask is not None:
-            mask = rearrange(mask, "b n -> b 1 n")
-        mask_value = torch.finfo(x.dtype).min
-
         # global query: additive-attention pooling of the queries
-        q_attn_logits = (
-            torch.einsum("b h n d, d -> b h n", q, self.to_q_attn_logits.weight[0]) * self.scale
-        )
-        if mask is not None:
-            q_attn_logits = q_attn_logits.masked_fill(~mask, mask_value)
-        global_q = torch.einsum("b h n, b h n d -> b h d", q_attn_logits.softmax(dim=-1), q_aggr)
+        w_q = self.to_q_attn_logits.weight[0].expand(*q.shape[:2], -1)
+        global_q = self._pool(w_q, q, q_aggr, mask)
 
         # global key: additive-attention pooling of p = k * global_q.
         #   logits_n = w_k . p_n          = k_n . (global_q * w_k)
@@ -109,11 +104,7 @@ class FastAttention(nn.Module):
         # With rotary embeddings, w_k acts on sums of adjacent feature pairs, so
         # it is repeated over each pair.
         w_k = self._pair_expand(self.to_k_attn_logits.weight[0], dim=0)
-        k_attn_logits = torch.einsum("b h n d, b h d -> b h n", k_aggr, global_q * w_k) * self.scale
-        if mask is not None:
-            k_attn_logits = k_attn_logits.masked_fill(~mask, mask_value)
-        k_pooled = torch.einsum("b h n, b h n d -> b h d", k_attn_logits.softmax(dim=-1), k_aggr)
-        global_k = global_q * k_pooled
+        global_k = global_q * self._pool(global_q * w_k, k_aggr, k_aggr, mask)
 
         # output transform of u = v * global_k (pair-summed with rotary), with
         # the queries as a residual: to_r(u) = v @ (diag(global_k) @ W_r^T) + b_r
@@ -122,6 +113,32 @@ class FastAttention(nn.Module):
         r = r + self.to_r.bias + q
         r = rearrange(r, "b h n d -> b n (h d)")
         return self.to_out(r)
+
+    def _pool(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        mask: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """Additive-attention pooling: sum_n softmax_n(scale * query . key_n) * value_n.
+
+        This is attention with a single query token, so it runs through
+        ``scaled_dot_product_attention`` (fused flash / memory-efficient kernels
+        on CUDA). query: (b, h, d); key, value: (b, h, n, d); returns (b, h, d).
+        """
+        if self.use_sdpa:
+            attn_mask = None if mask is None else rearrange(mask, "b n -> b 1 1 n")
+            out = F.scaled_dot_product_attention(
+                query.unsqueeze(-2), key, value, attn_mask=attn_mask, scale=self.scale
+            )
+            return out.squeeze(-2)
+        logits = torch.einsum("b h n d, b h d -> b h n", key, query) * self.scale
+        if mask is not None:
+            logits = logits.masked_fill(
+                ~rearrange(mask, "b n -> b 1 n"), torch.finfo(logits.dtype).min
+            )
+        return torch.einsum("b h n, b h n d -> b h d", logits.softmax(dim=-1), value)
 
     def _pair_expand(self, weight: torch.Tensor, dim: int) -> torch.Tensor:
         if self.rotary_emb is None:
